@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>StraySafe Admin Dashboard</title>
+  <style>
+    body { font-family: sans-serif; margin:0; padding:0; }
+    header { background:#0066cc; color:#fff; padding:1rem; text-align:center; }
+    #content { padding:1rem; }
+    table { width:100%; border-collapse: collapse; margin-top:1rem; }
+    th, td { border:1px solid #ddd; padding:0.5rem; text-align:left; }
+    th { background:#f4f4f4; }
+    .btn { padding:0.3rem 0.6rem; margin:0 0.2rem; border:none; border-radius:4px; cursor:pointer; }
+    .btn-status { background:#4caf50; color:#fff; }
+    .btn-logout { background:#c62828; color:#fff; float:right; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>StraySafe Admin</h1>
+    <button id="logoutBtn" class="btn btn-logout" style="display:none;">Log Out</button>
+  </header>
+
+  <div id="content">
+    <!-- FirebaseUI will show the login form here if not signed in -->
+    <div id="login-container"></div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" style="display:none;">
+      <h2>All Reports</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Case ID</th>
+            <th>Description</th>
+            <th>Reporter</th>
+            <th>Status</th>
+            <th>Location</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="reportsTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Firebase App (the core SDK) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <!-- Add SDKs for Firebase products you want to use -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+  <!-- FirebaseUI for Authentication -->
+  <link rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.0.2/firebase-ui-auth.css" />
+  <script src="https://www.gstatic.com/firebasejs/ui/6.0.2/firebase-ui-auth.js"></script>
+
+  <script>
+    // 1) Your Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyDd3_l97EJV46FhtYXwfc6L-ZwNN8dnPUU",
+      authDomain: "straysafe-fca75.firebaseapp.com",
+      projectId: "straysafe-fca75",
+      // ...
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+
+    // 2) Set up FirebaseUI Auth
+    const ui = new firebaseui.auth.AuthUI(auth);
+    const uiConfig = {
+      signInOptions: [ firebase.auth.EmailAuthProvider.PROVIDER_ID ],
+      callbacks: {
+        signInSuccessWithAuthResult: (authResult) => {
+          initDashboard(authResult.user);
+          return false; // don't redirect
+        }
+      }
+    };
+    ui.start('#login-container', uiConfig);
+
+    // 3) Log out button
+    document.getElementById('logoutBtn').onclick = () => auth.signOut();
+
+    // 4) Initialize dashboard for admins
+    async function initDashboard(user) {
+      // Check role in Firestore
+      const userDoc = await db.collection('users').doc(user.uid).get();
+      if (!userDoc.exists || userDoc.data().role !== 'admin') {
+        alert('Access denied: admin only');
+        auth.signOut();
+        return;
+      }
+      // Hide login, show dashboard
+      document.getElementById('login-container').style.display = 'none';
+      document.getElementById('logoutBtn').style.display = 'inline-block';
+      document.getElementById('dashboard').style.display = 'block';
+
+      // Listen & render reports
+      db.collection('reports')
+        .orderBy('createdAt', 'desc')
+        .onSnapshot(snapshot => {
+          const tbody = document.getElementById('reportsTable');
+          tbody.innerHTML = '';
+          snapshot.forEach(doc => {
+            const r = doc.data();
+            const tr = document.createElement('tr');
+
+            // Case ID
+            tr.innerHTML += `<td>${doc.id}</td>`;
+
+            // Description
+            tr.innerHTML += `<td>${r.description}</td>`;
+
+            // Reporter
+            tr.innerHTML += `<td>${r.reporterName || r.reportedBy}</td>`;
+
+            // Status
+            tr.innerHTML += `<td>${r.status}</td>`;
+
+            // Location link
+            const loc = `<a href="https://maps.google.com/?q=${r.location.latitude},${r.location.longitude}" target="_blank">View</a>`;
+            tr.innerHTML += `<td>${loc}</td>`;
+
+            // Actions (change status)
+            const btns = ['open','claimed','closed'].map(st => {
+              return `<button data-id="${doc.id}" data-status="${st}" class="btn btn-status">${st}</button>`;
+            }).join('');
+            tr.innerHTML += `<td>${btns}</td>`;
+
+            tbody.appendChild(tr);
+          });
+
+          // Attach click handlers
+          document.querySelectorAll('.btn-status').forEach(btn => {
+            btn.onclick = async (e) => {
+              const id = btn.dataset.id;
+              const newStatus = btn.dataset.status;
+              await db.collection('reports').doc(id).update({ status: newStatus });
+            };
+          });
+        });
+    }
+
+    // 5) Handle auth state
+    auth.onAuthStateChanged(user => {
+      if (user) {
+        // UI will call initDashboard via FirebaseUI callback
+      } else {
+        // Show login
+        document.getElementById('dashboard').style.display = 'none';
+        document.getElementById('login-container').style.display = 'block';
+        ui.start('#login-container', uiConfig);
+      }
+    });
+  </script>
+</body>
+</html>
