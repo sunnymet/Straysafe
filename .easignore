@@ -3,5 +3,7 @@
 android/.gradle/
 android/app/build/
 node_modules/
+ios/Pods/
+ios/build/
 npm-debug.log*
 yarn-error.log*
