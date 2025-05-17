@@ -1,4 +1,5 @@
 .expo/
+.vscode/
 android/.gradle/
 android/app/build/
 node_modules/
